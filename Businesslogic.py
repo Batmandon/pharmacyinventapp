@@ -4,6 +4,10 @@ from models import UserCreate, SellerCreate, CreateProduct, UserLogin, UserRefre
 from jwt_handler import create_access_token, create_refresh_token, decode_token
 from datetime import date
 from database import DATABASE_URL
+from logger import logger
+from fastapi import File, UploadFile
+import shutil
+import os
 
 # ============ HELPER FUNCTIONS ===========
 
@@ -61,7 +65,7 @@ def get_current_user(token: str):
     user_result = get_user_by_email(email)
     if "error" in user_result:
         return {"error": "Invalid Token"}
-    return user_result["user"]
+    return dict(user_result["user"])
 
 
 # ============ BUSINESS LOGIC ============
@@ -78,10 +82,12 @@ def register_user(User: UserCreate):
         )
         
         if "error" in result:
+            logger.error(f"register user failed: {result['error']}")
             return result
         
         return {"message": "User registered successfully", "user_id": result["id"]}
     except Exception as e:
+        logger.error(f"register_user exception: {str(e)}")
         return {"error": str(e)}
     
 def register_seller(seller: SellerCreate):
@@ -164,7 +170,7 @@ def authenticate_user(User: UserLogin):
         return {"error": str(e)} 
         
 def refresh(token: UserRefresh):
-    payload = decode_token(token)
+    payload = decode_token(token.token)
     token_type = payload["token_type"]
     email = payload["email"]
 
@@ -263,8 +269,16 @@ def place_customer_order(Order: CreateOrder, token: str):
             columns=['customer_id', 'product_id', 'quantity', 'status'],
             values=(customer_id, Order.product_id, Order.quantity, 'pending'))
 
+        
         if "error" in order_result:
             return order_result
+        
+        with sqlite3.connect(DATABASE_URL) as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?",
+                          (Order.quantity, Order.product_id))
+            conn.commit()
+
         return {"message": "Product Placed successfully!, We will notify you when it will be placed"}
     except Exception as e:
         return {"error": str(e)}
@@ -365,10 +379,38 @@ def check_expiry(token: str):
 
         return result   
 
+async def upload_product_image(product_id: int, file: UploadFile, token:str):
+    user = get_current_user(token)
+    if "error" in user:
+        return user
+    if user["role"] != "seller":
+        return {"error": "Unauthorized"}
 
-
-
+    allowed = ["image/jpeg", "image/png"]
+    if file.content_type not in allowed:
+        return {"error": "Only JPG/PNG allowed"}
     
+    file_path = f"uploads/{product_id}_{file.filename}"
 
-    
-    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    return {"message": "Image uploaded!", "path": file_path}
+
+async def upload_seller_document(seller_id: int, file: UploadFile, token: str):
+    user = get_current_user(token)
+    if "error" in user:
+        return user
+    if user['role'] != "seller":
+        return {"error": "Unauthorized"}
+
+    allowed = ["application/pdf"]
+    if file.content_type not in allowed:
+        return {"error": "Sirf PDF allowed hai"}
+
+    file_path = f"uploads/{seller_id}_{file.filename}"
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    return {"message": "Document uploaded!", "path": file_path}

@@ -2,15 +2,19 @@ from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 from database import create_database, DATABASE_URL
 from models import UserCreate, UserLogin, UserRefresh, SellerCreate, CreateProduct, CreateOrder, UpdateStock
-from Businesslogic import register_user,authenticate_user, create_product, refresh, get_product, register_seller, get_products,place_customer_order, check_low_stock, update_stock, get_orders, check_expiry
+from Businesslogic import register_user,authenticate_user, create_product, refresh, get_product, register_seller, get_products,place_customer_order, check_low_stock, update_stock, get_orders, check_expiry,upload_product_image,upload_seller_document
+from fastapi import File, UploadFile
+import shutil
+import os
+
 
 app = FastAPI()
 create_database(DATABASE_URL)
+os.makedirs("uploads", exist_ok=True)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 @app.post("/register")
 def register(User: UserCreate):
-    """Endpoint to register a new user"""
     result = register_user(User)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -18,7 +22,6 @@ def register(User: UserCreate):
 
 @app.post("/register/seller")
 def register(User: SellerCreate):
-    """Endpoint to register a new user"""
     result = register_seller(User)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -94,3 +97,17 @@ def expiry_check(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=400, detail=result["error"])
     return result
 
+
+@app.post("/upload/image/{product_id}")
+async def upload_image(product_id: int, file: UploadFile = File(...), token: str = Depends(oauth2_scheme)):
+    result = await upload_product_image(product_id, file, token)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+@app.post("/upload/document/{seller_id}")
+async def upload_document(seller_id: int, file: UploadFile = File(...), token: str = Depends(oauth2_scheme)):
+    result = await upload_seller_document(seller_id, file, token)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result

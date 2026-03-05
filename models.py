@@ -5,7 +5,7 @@ class UserCreate(BaseModel):
     name: str
     email: str
     password: str
-    role: str  # "user" or "seller"
+    role: str = "user"
 
 class SellerCreate(BaseModel):
     name: str
@@ -14,7 +14,7 @@ class SellerCreate(BaseModel):
     role: str = "seller"
     business_name: str
     gst_number: str
-    phone: str
+    phone: int
     address: str
 
 class UserLogin(BaseModel):
